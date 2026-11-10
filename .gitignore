@@ -1,0 +1,10 @@
+.homeruns/
+__pycache__/
+*.mp4
+*_final.png
+*.gpx
+*.tcx
+*.gz
+.DS_Store
+.pixi/
+.venv/
