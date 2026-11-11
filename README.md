@@ -93,6 +93,17 @@ pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
 
 `--overlay-only` takes no track files and doesn't need Blender. It reads the frames, timing and run list from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Anything in the 3D scene, such as the map, routes, camera, marker or `--seconds`, needs a full render. The kept frames take a few GB at full size.
 
+### Run count and distance in the text
+
+The title and subtitle can include numbers from the runs in the video: `{runs}`, `{km}` (total distance), `{first_year}` and `{last_year}`. Add a format after a colon, as in Python:
+
+```bash
+pixi run homeruns ~/Downloads/strava_export/activities --title "All my runs from home since {first_year}" \
+    --subtitle "{runs} runs, {km:.0f} km, Lisbon"
+```
+
+The distance is measured on the cleaned tracks after `--privacy-radius`, so it can be a little lower than Strava's total. Frames kept before `{km}` was added don't store distances, so `--overlay-only` can't fill it for them.
+
 ### Face marker
 
 Pass a PNG or WebP of a face on a **transparent background** with `--face`. On macOS and iOS, "Copy Subject" or "Lift subject from background" in Photos makes one. The face is tinted orange by default; use `--tint 0` to keep its colours. Without `--face`, each runner is an orange dot.
@@ -101,7 +112,7 @@ Pass a PNG or WebP of a face on a **transparent background** with `--face`. On m
 
 | Option | Default | |
 |---|---|---|
-| `--title`, `--subtitle` | `HOME RUNS since <year>`, `<n> runs between <year> and <year>` | Text at the top |
+| `--title`, `--subtitle` | `HOME RUNS since <year>`, `<n> runs, <total> km` | Text at the top; can use `{runs}`, `{km}`, `{first_year}`, `{last_year}` |
 | `--place` | | Added to the default subtitle |
 | `--radius` | 200 | Metres from home a run must start within |
 | `--home` | auto | `lat,lon` of home |

@@ -31,7 +31,9 @@ def parse_args(argv):
     p.add_argument("--face", help="transparent PNG/WebP of a face to use as the runner marker (default: a dot)")
     p.add_argument("--tint", type=float, default=0.55, help="orange tint of the face, 0 (none) to 1 (full)")
     p.add_argument("--title", help='title, default "HOME RUNS since <first year>" (or "HOME RUNS <year>")')
-    p.add_argument("--subtitle", help='subtitle, default "<n> runs between <first year> and <last year>"')
+    p.add_argument("--subtitle", help='subtitle, default "<n> runs, <total> km". '
+                   'Title and subtitle can use {runs}, {km}, {first_year} and {last_year}, '
+                   'e.g. "{runs} runs, {km:.0f} km, Lisbon"')
     p.add_argument("--place", help='appended to the default subtitle, e.g. "Lisbon"')
     p.add_argument("--radius", type=float, default=200, help="runs must start within this many metres of home")
     p.add_argument("--home", help='"lat,lon" of home (default: the place where most runs start)')
@@ -76,13 +78,33 @@ def progress(done, total, t0, width=32):
     sys.stdout.flush()
 
 
+def fill(text, routes, years):
+    """Fill {runs}, {km}, {first_year} and {last_year} in a user-given title or subtitle."""
+    values = dict(runs=len(routes), first_year=years[0], last_year=years[-1])
+    if all("distance" in r for r in routes):
+        values["km"] = sum(r["distance"] for r in routes) / 1000
+    try:
+        return text.format(**values)
+    except KeyError as e:
+        if e.args[0] == "km":
+            raise SystemExit("{km} needs frames kept by this version; render again with --keep-frames")
+        raise SystemExit(f"unknown placeholder {{{e.args[0]}}}; use {{runs}}, {{km}}, {{first_year}} or {{last_year}}")
+    except (ValueError, IndexError) as e:
+        raise SystemExit(f"can't fill {text!r}: {e}. Write literal braces as {{{{ and }}}}.")
+
+
 def finish(a, cfg, routes, frames_dir):
     """Draw the overlay on the rendered frames and encode the video."""
     years = sorted({r["date"][:4] for r in routes})
-    title = a.title or (f"HOME RUNS {years[0]}" if len(years) == 1 else f"HOME RUNS since {years[0]}")
-    if a.subtitle:
-        subtitle = a.subtitle
+    if a.title:
+        title = fill(a.title, routes, years)
     else:
+        title = f"HOME RUNS {years[0]}" if len(years) == 1 else f"HOME RUNS since {years[0]}"
+    if a.subtitle:
+        subtitle = fill(a.subtitle, routes, years)
+    elif all("distance" in r for r in routes):
+        subtitle = fill("{runs} runs, {km:.0f} km", routes, years) + (f", {a.place}" if a.place else "")
+    else:   # frames kept before distances were stored
         subtitle = f"{len(routes)} runs " + (f"in {years[0]}" if len(years) == 1 else f"between {years[0]} and {years[-1]}")
         subtitle += f", {a.place}" if a.place else ""
     out = a.out
@@ -196,7 +218,7 @@ def main(argv=None):
         raise SystemExit(f"render failed, see {os.path.join(work, 'render.log')}")
 
     # ---- overlay + encode ----
-    routes = [{"date": r["date"], "duration": r["duration"]}
+    routes = [{"date": r["date"], "duration": r["duration"], "distance": round(tracks.length_m(runs[r["id"]]))}
               for r in json.load(open(os.path.join(work, "routes.json")))["routes"]]
     if a.keep_frames:   # what --overlay-only needs, stored with the frames so a later run can't mismatch them
         json.dump({"cfg": cfg, "routes": routes}, open(os.path.join(frames_dir, "overlay.json"), "w"))

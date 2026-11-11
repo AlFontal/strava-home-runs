@@ -28,8 +28,9 @@ FONTS = {
 }
 
 WHITE, GREY, HOT, DIM, AXIS = (232, 232, 238), (138, 143, 163), (255, 110, 30), (70, 40, 34), (90, 94, 110)
-# positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera
-LAYOUT = dict(title_size=120, title_y=232, line_h=120, sub_size=34, sub_gap=14, clock_size=100, clock_y=1392,
+# positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera.
+# sub_gap: from the title baseline to the top of the subtitle line
+LAYOUT = dict(title_size=120, title_y=232, sub_size=34, sub_gap=40, clock_size=100, clock_y=1392,
               status_y=1502, credit_y=1640, credit_size=20, margin=72, hist=dict(x0=72, x1=600, top=1392, base=1512, label_size=22))
 
 
@@ -74,11 +75,12 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, lo
     # shrink the title until it fits on one line
     while f_title.getlength(title) > W - 2 * M and f_title.size > 20:
         f_title = load_font("title", f_title.size - 4, fonts.get("title"))
-    sub_y = px(L["title_y"] + L["line_h"] + L["sub_gap"])
+    # the subtitle follows the title's baseline, so it stays close when a long title is shrunk
+    sub_y = px(L["title_y"]) + f_title.getbbox("H")[3] + px(L["sub_gap"])
 
     # dark gradients behind the text so routes passing underneath don't hurt legibility
     y = np.arange(H, dtype=np.float32)[:, None]
-    top_end, bot_start = sub_y + px(110), px(L["clock_y"]) - px(90)
+    top_end, bot_start = px(476), px(L["clock_y"]) - px(90)   # scrim ends where it always has, below the subtitle
     top = np.clip((top_end - y) / (top_end * 0.55), 0, 1)
     bot = np.clip((y - bot_start) / px(260), 0, 1)
     scrim = (1 - 0.72 * np.maximum(top, bot) ** 1.3)[:, :, None]

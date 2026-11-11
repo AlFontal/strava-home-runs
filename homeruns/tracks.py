@@ -183,6 +183,12 @@ def clean(tr, max_speed=7.0, max_rejects=10):
     return Track(tr.name, tr.start, tr.sport, loc, t)
 
 
+def length_m(tr):
+    """Length of the track in metres."""
+    ky, kx = metres_per_degree(tr.loc[0, 0])
+    return float(np.hypot(np.diff(tr.loc[:, 0]) * ky, np.diff(tr.loc[:, 1]) * kx).sum())
+
+
 def find_home(starts, radius):
     """The start point with the most other starts within `radius` metres (mean of that cluster)."""
     ky, kx = metres_per_degree(float(np.median(starts[:, 0])))
