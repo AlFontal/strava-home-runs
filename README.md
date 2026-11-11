@@ -69,7 +69,7 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 
 `--preview` renders at half size and every second frame, which takes a few minutes. Check the result, then run the same command without `--preview` for the full 1440×2560 video.
 
-Rendering takes about 5 s per frame on an Apple Silicon Mac, so the default 30 s run section (about 1,100 frames) takes around 1.5 hours.
+Rendering takes about 5 s per frame on an Apple Silicon Mac, so the default video (30 s of running plus the intro and outro, about 1,100 frames) takes around 1.5 hours.
 
 The tool:
 
@@ -81,6 +81,17 @@ The tool:
    - Shortens long pauses.
 4. Downloads elevation and streets for the area. These are cached in `--work` (default `.homeruns/`).
 5. Builds and renders the scene in Blender, adds the overlay and encodes `home_runs.mp4` plus `home_runs_final.png`.
+
+### Changing the text without rendering again
+
+The title, subtitle, clock, histogram and credit are drawn on the frames after Blender has rendered them. Add `--keep-frames` to the render, and you can redo that step later in a few minutes:
+
+```bash
+pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lisbon --keep-frames
+pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
+```
+
+`--overlay-only` takes no GPX files and doesn't need Blender. It reads the frames, timing and run list from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Anything in the 3D scene, such as the map, routes, camera, marker or `--seconds`, needs a full render. The kept frames take a few GB at full size.
 
 ### Face marker
 
@@ -104,6 +115,7 @@ Pass a PNG or WebP of a face on a **transparent background** with `--face`. On m
 | `--crf` | 16 | Video quality; higher gives a smaller file |
 | `--font-title`, `--font-text`, `--font-clock` | system fonts | TTF/OTF files |
 | `--keep-frames` | | Keep the rendered PNGs in the work folder |
+| `--overlay-only` | | Redraw the text on kept frames and encode, without Blender |
 
 ## Privacy
 
@@ -129,6 +141,8 @@ The code is in `homeruns/`:
 | `render_setup.py` | Render settings |
 | `overlay.py` | Text, histogram and encoding |
 | `timewarp.py` | Clock curve |
+| `face.py` | Face and dot marker sprites |
+| `__main__.py` | Command line and pipeline |
 
 ## Credits
 

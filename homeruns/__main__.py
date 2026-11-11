@@ -1,6 +1,8 @@
 """strava-home-runs: animate every run that started from home, each at its own pace, in 3D.
 
-  homeruns <gpx files or folders> [--face me.png] [--preview]
+  homeruns <gpx files or folders> [--face me.png] [--preview] [--keep-frames]
+  homeruns --overlay-only [--title ...] [--preview]   redo the text on kept frames, no Blender
+
 
 See README.md for all options.
 """
@@ -25,7 +27,7 @@ FPS, INTRO, OUTRO, RAMP, TIME_K = 30, 45, 120, 60, 2.3
 def parse_args(argv):
     p = argparse.ArgumentParser(prog="homeruns", description=__doc__.splitlines()[0],
                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    p.add_argument("inputs", nargs="+", help="GPX/TCX files (optionally .gz) or folders containing them")
+    p.add_argument("inputs", nargs="*", help="GPX/TCX files (optionally .gz) or folders containing them")
     p.add_argument("--face", help="transparent PNG/WebP of a face to use as the runner marker (default: a dot)")
     p.add_argument("--tint", type=float, default=0.55, help="orange tint of the face, 0 (none) to 1 (full)")
     p.add_argument("--title", help='title, default "HOME RUNS since <first year>" (or "HOME RUNS <year>")')
@@ -49,9 +51,14 @@ def parse_args(argv):
     p.add_argument("--line-strength", type=float, help="brightness of a single route (default: from the run count)")
     p.add_argument("--crf", type=int, default=16, help="x264 quality, lower is better and bigger")
     p.add_argument("--keep-frames", action="store_true", help="keep the rendered PNG frames")
+    p.add_argument("--overlay-only", action="store_true",
+                   help="skip Blender: redraw the overlay on frames kept by an earlier --keep-frames run and encode")
     for k in ("title", "text", "clock"):
         p.add_argument(f"--font-{k}", help=f"TTF/OTF font for the {k}")
-    return p.parse_args(argv)
+    a = p.parse_args(argv)
+    if not a.inputs and not a.overlay_only:
+        p.error("give GPX/TCX files or folders (or --overlay-only)")
+    return a
 
 
 def find_blender(path):
@@ -69,11 +76,41 @@ def progress(done, total, t0, width=32):
     sys.stdout.flush()
 
 
+def finish(a, cfg, routes, frames_dir):
+    """Draw the overlay on the rendered frames and encode the video."""
+    years = sorted({r["date"][:4] for r in routes})
+    title = a.title or (f"HOME RUNS {years[0]}" if len(years) == 1 else f"HOME RUNS since {years[0]}")
+    if a.subtitle:
+        subtitle = a.subtitle
+    else:
+        subtitle = f"{len(routes)} runs " + (f"in {years[0]}" if len(years) == 1 else f"between {years[0]} and {years[-1]}")
+        subtitle += f", {a.place}" if a.place else ""
+    out = a.out
+    if a.preview:
+        root, ext = os.path.splitext(out)
+        out = f"{root}_preview{ext or '.mp4'}"
+    fonts = {"title": a.font_title, "text": a.font_text, "clock": a.font_clock}
+    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts, a.crf)
+
+
+def overlay_only(a):
+    """Re-encode from frames kept by an earlier run, using the timing and runs saved with them."""
+    frames_dir = os.path.join(os.path.abspath(a.work), "frames_preview" if a.preview else "frames")
+    meta = os.path.join(frames_dir, "overlay.json")
+    if not os.path.exists(meta) or not any(n.endswith(".png") for n in os.listdir(frames_dir)):
+        raise SystemExit(f"no kept frames in {frames_dir}. Render once with --keep-frames"
+                         + (" --preview" if a.preview else "") + " (and the same --work).")
+    saved = json.load(open(meta))
+    finish(a, saved["cfg"], saved["routes"], frames_dir)
+
+
 def main(argv=None):
     a = parse_args(argv)
-    blender = find_blender(a.blender)
     if not shutil.which("ffmpeg"):
         raise SystemExit("ffmpeg not found on PATH.")
+    if a.overlay_only:
+        return overlay_only(a)
+    blender = find_blender(a.blender)
     W, H = (int(v) for v in a.size.lower().split("x"))
     work = os.path.abspath(a.work)
     os.makedirs(work, exist_ok=True)
@@ -159,20 +196,11 @@ def main(argv=None):
         raise SystemExit(f"render failed, see {os.path.join(work, 'render.log')}")
 
     # ---- overlay + encode ----
-    routes = json.load(open(os.path.join(work, "routes.json")))["routes"]
-    years = sorted({r["date"][:4] for r in routes})
-    title = a.title or (f"HOME RUNS {years[0]}" if len(years) == 1 else f"HOME RUNS since {years[0]}")
-    if a.subtitle:
-        subtitle = a.subtitle
-    else:
-        subtitle = f"{len(routes)} runs " + (f"in {years[0]}" if len(years) == 1 else f"between {years[0]} and {years[-1]}")
-        subtitle += f", {a.place}" if a.place else ""
-    out = a.out
-    if a.preview:
-        root, ext = os.path.splitext(out)
-        out = f"{root}_preview{ext or '.mp4'}"
-    fonts = {"title": a.font_title, "text": a.font_text, "clock": a.font_clock}
-    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts, a.crf)
+    routes = [{"date": r["date"], "duration": r["duration"]}
+              for r in json.load(open(os.path.join(work, "routes.json")))["routes"]]
+    if a.keep_frames:   # what --overlay-only needs, stored with the frames so a later run can't mismatch them
+        json.dump({"cfg": cfg, "routes": routes}, open(os.path.join(frames_dir, "overlay.json"), "w"))
+    finish(a, cfg, routes, frames_dir)
     if not a.keep_frames:
         shutil.rmtree(frames_dir, ignore_errors=True)
 
