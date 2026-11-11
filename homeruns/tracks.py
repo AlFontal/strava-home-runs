@@ -1,11 +1,12 @@
-"""Read GPX/TCX tracks, find the runs that start from the same place, and clean their timing."""
+"""Read GPX/TCX/FIT tracks, find the runs that start from the same place, and clean their timing."""
 import glob
 import gzip
 import math
 import os
+import struct
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -31,9 +32,88 @@ def _time(s):
     return datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
 
 
+FIT_EPOCH = datetime(1989, 12, 31, tzinfo=timezone.utc).timestamp()
+# FIT sport enum (profile "sport" type); unknown numbers are kept as "sport_<n>"
+FIT_SPORTS = {0: "generic", 1: "running", 2: "cycling", 3: "transition", 4: "fitness_equipment", 5: "swimming",
+              10: "training", 11: "walking", 13: "alpine_skiing", 15: "rowing", 16: "mountaineering",
+              17: "hiking", 19: "paddling", 21: "e_biking", 37: "stand_up_paddleboarding"}
+
+
+def _read_fit(data):
+    """(sport, [(unix seconds, lat, lon), ...]) from the record messages of a FIT file.
+
+    A minimal reader for the parts of the format that activity files use: definition and data
+    messages, compressed timestamp headers, developer fields (skipped) and chained files.
+    """
+    sport, out, start = "", [], 0
+    while start + 12 <= len(data) and data[start + 8:start + 12] == b".FIT":
+        hsize = data[start]
+        end = start + hsize + struct.unpack_from("<I", data, start + 4)[0]
+        pos, defs, last_ts = start + hsize, {}, None
+        while pos < end:
+            h = data[pos]
+            pos += 1
+            ts = None
+            if h & 0x80:                          # compressed timestamp header: 5-bit offset from the last timestamp
+                local, off = (h >> 5) & 0x3, h & 0x1F
+                if last_ts is not None:
+                    ts = last_ts - (last_ts & 0x1F) + off + (0x20 if off < (last_ts & 0x1F) else 0)
+                    last_ts = ts
+            elif h & 0x40:                        # definition message
+                local = h & 0x0F
+                endian = "<" if data[pos + 1] == 0 else ">"
+                gnum = struct.unpack_from(endian + "H", data, pos + 2)[0]
+                n = data[pos + 4]
+                pos += 5
+                fields = [tuple(data[pos + 3 * i:pos + 3 * i + 2]) for i in range(n)]
+                pos += 3 * n
+                dev = 0
+                if h & 0x20:                      # developer fields: only their sizes matter
+                    nd = data[pos]
+                    dev = sum(data[pos + 2 + 3 * i] for i in range(nd))
+                    pos += 1 + 3 * nd
+                defs[local] = (endian, gnum, fields, dev)
+                continue
+            else:
+                local = h & 0x0F
+            endian, gnum, fields, dev = defs[local]
+            vals = {}
+            for num, size in fields:
+                if size == 4 and num in (0, 1, 253):
+                    vals[num] = struct.unpack_from(endian + ("I" if num == 253 else "i"), data, pos)[0]
+                elif size == 1 and num in (0, 5):
+                    vals[num] = data[pos]
+                pos += size
+            pos += dev
+            if vals.get(253, 0xFFFFFFFF) != 0xFFFFFFFF:
+                ts = last_ts = vals[253]
+            if gnum == 20 and ts is not None:     # record
+                lat, lon = vals.get(0), vals.get(1)
+                if lat not in (None, 0x7FFFFFFF) and lon not in (None, 0x7FFFFFFF):
+                    out.append((ts + FIT_EPOCH, lat * 180 / 2 ** 31, lon * 180 / 2 ** 31))
+            elif not sport and gnum in (12, 18):  # sport.sport (field 0) or session.sport (field 5)
+                v = vals.get(5 if gnum == 18 else 0, 0xFF)
+                if v != 0xFF:
+                    sport = FIT_SPORTS.get(v, f"sport_{v}")
+        start = end + 2                           # skip the CRC; another FIT file may follow
+    return sport, out
+
+
 def read_track(path):
-    """Points and timestamps from a .gpx or .tcx file (optionally .gz). None if it has no timed points."""
-    opener = gzip.open if path.endswith(".gz") else open
+    """Points and timestamps from a .gpx, .tcx or .fit file (optionally .gz). None if it has no timed points."""
+    opener = gzip.open if path.lower().endswith(".gz") else open
+    if path.lower().removesuffix(".gz").endswith(".fit"):
+        with opener(path, "rb") as fh:
+            try:
+                sport, recs = _read_fit(fh.read())
+            except (KeyError, IndexError, struct.error):   # truncated or not really FIT
+                return None
+        if len(recs) < 10:
+            return None
+        recs.sort(key=lambda r: r[0])
+        t0 = datetime.fromtimestamp(recs[0][0], timezone.utc)
+        t = np.array([r[0] - recs[0][0] for r in recs], float)
+        return Track(os.path.basename(path), t0, sport, np.array([r[1:] for r in recs], float), t)
     pts, times, sport = [], [], ""
     with opener(path, "rb") as fh:
         for _, el in ET.iterparse(fh):
@@ -64,7 +144,7 @@ def read_track(path):
 
 
 def find_files(inputs):
-    exts = (".gpx", ".tcx", ".gpx.gz", ".tcx.gz")
+    exts = (".gpx", ".tcx", ".fit", ".gpx.gz", ".tcx.gz", ".fit.gz")
     out = []
     for p in inputs:
         if os.path.isdir(p):

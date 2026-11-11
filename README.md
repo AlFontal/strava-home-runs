@@ -1,7 +1,7 @@
 
 # strava-home-runs
 
-Turns GPX files (from Strava, Garmin or any other GPS source) into a 3D video of every run that started within a chosen radius of one point. It generalizes the script I used to animate five years of runs that started from my home.
+Turns GPX, TCX or FIT files (from Strava, Garmin or any other GPS source) into a 3D video of every run that started within a chosen radius of one point. It generalizes the script I used to animate five years of runs that started from my home.
 
 <p align="center"><img src="docs/preview.gif" alt="Animation of 289 runs leaving the same point in Barcelona, each at its own pace, with a clock and a histogram of finish times" width="320"></p>
 
@@ -50,12 +50,12 @@ The tool looks for Blender on your `PATH` and in `/Applications/Blender.app`. Us
 
 [uv](https://docs.astral.sh/uv/) also works (`uv run homeruns ...`), but then ffmpeg has to be on your `PATH`.
 
-## Getting your GPX files
+## Getting your files
 
 - **Strava:** Settings → My Account → Download or Delete Your Account → Request your archive. The `activities/` folder in the zip has `.gpx` files, and `.fit.gz` files for activities uploaded from a watch.
-- **Garmin Connect:** export GPX from each activity's ⚙ menu. The bulk export gives FIT files.
+- **Garmin Connect:** request the bulk export under Account → Data Management → Export Your Data. The activity FIT files are inside further zip files in the export; unzip those too. You can also export a single activity from its ⚙ menu.
 
-The tool reads `.gpx` and `.tcx`, also gzipped. It doesn't read FIT files; convert them first, for example with `gpsbabel -i garmin_fit -f run.fit -o gpx -F run.gpx`.
+The tool reads `.gpx`, `.tcx` and `.fit` files, also gzipped, and searches folders recursively. Point it at the whole export folder.
 
 ## Usage
 
@@ -73,7 +73,7 @@ Rendering takes about 5 s per frame on an Apple Silicon Mac, so the default vide
 
 The tool:
 
-1. Reads every track and keeps the runs (`--sport`, default `run`; GPX files without a type are kept).
+1. Reads every track and keeps the runs (`--sport`, default `run`; files without a type are kept).
 2. Finds home: the place where most runs start (or `--home lat,lon`). Keeps the runs that start within `--radius` metres (default 200).
 3. Cleans the GPS:
    - Drops spikes faster than `--max-speed` (7 m/s).
@@ -91,7 +91,7 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
 ```
 
-`--overlay-only` takes no GPX files and doesn't need Blender. It reads the frames, timing and run list from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Anything in the 3D scene, such as the map, routes, camera, marker or `--seconds`, needs a full render. The kept frames take a few GB at full size.
+`--overlay-only` takes no track files and doesn't need Blender. It reads the frames, timing and run list from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Anything in the 3D scene, such as the map, routes, camera, marker or `--seconds`, needs a full render. The kept frames take a few GB at full size.
 
 ### Face marker
 
@@ -134,7 +134,7 @@ The code is in `homeruns/`:
 
 | File | Role |
 |---|---|
-| `tracks.py` | Reads GPX/TCX, finds home, cleans GPS |
+| `tracks.py` | Reads GPX/TCX/FIT, finds home, cleans GPS |
 | `basemap.py` | Downloads elevation and streets |
 | `prepare.py` | Builds the street texture and route points |
 | `scene.py` | Builds the scene in Blender |

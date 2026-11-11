@@ -1,6 +1,6 @@
 """strava-home-runs: animate every run that started from home, each at its own pace, in 3D.
 
-  homeruns <gpx files or folders> [--face me.png] [--preview] [--keep-frames]
+  homeruns <gpx/tcx/fit files or folders> [--face me.png] [--preview] [--keep-frames]
   homeruns --overlay-only [--title ...] [--preview]   redo the text on kept frames, no Blender
 
 
@@ -27,7 +27,7 @@ FPS, INTRO, OUTRO, RAMP, TIME_K = 30, 45, 120, 60, 2.3
 def parse_args(argv):
     p = argparse.ArgumentParser(prog="homeruns", description=__doc__.splitlines()[0],
                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    p.add_argument("inputs", nargs="*", help="GPX/TCX files (optionally .gz) or folders containing them")
+    p.add_argument("inputs", nargs="*", help="GPX/TCX/FIT files (optionally .gz) or folders containing them")
     p.add_argument("--face", help="transparent PNG/WebP of a face to use as the runner marker (default: a dot)")
     p.add_argument("--tint", type=float, default=0.55, help="orange tint of the face, 0 (none) to 1 (full)")
     p.add_argument("--title", help='title, default "HOME RUNS since <first year>" (or "HOME RUNS <year>")')
@@ -57,7 +57,7 @@ def parse_args(argv):
         p.add_argument(f"--font-{k}", help=f"TTF/OTF font for the {k}")
     a = p.parse_args(argv)
     if not a.inputs and not a.overlay_only:
-        p.error("give GPX/TCX files or folders (or --overlay-only)")
+        p.error("give GPX/TCX/FIT files or folders (or --overlay-only)")
     return a
 
 
@@ -118,7 +118,7 @@ def main(argv=None):
     # ---- tracks ----
     files = tracks.find_files(a.inputs)
     if not files:
-        raise SystemExit("no .gpx/.tcx files found")
+        raise SystemExit("no .gpx/.tcx/.fit files found")
     runs, skipped = [], 0
     for f in files:
         tr = tracks.read_track(f)
