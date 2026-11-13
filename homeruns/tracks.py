@@ -1,6 +1,8 @@
 """Read GPX/TCX/FIT tracks, find the runs that start from the same place, and clean their timing."""
+import codecs
 import glob
 import gzip
+import io
 import math
 import os
 import struct
@@ -114,9 +116,13 @@ def read_track(path):
         t0 = datetime.fromtimestamp(recs[0][0], timezone.utc)
         t = np.array([r[0] - recs[0][0] for r in recs], float)
         return Track(os.path.basename(path), t0, sport, np.array([r[1:] for r in recs], float), t)
-    pts, times, sport = [], [], ""
     with opener(path, "rb") as fh:
-        for _, el in ET.iterparse(fh):
+        data = fh.read()
+    # Strava's bulk export writes some TCX files with whitespace before <?xml ...?>, which expat rejects.
+    data = data.lstrip().removeprefix(codecs.BOM_UTF8).lstrip()
+    pts, times, sport = [], [], ""
+    try:
+        for _, el in ET.iterparse(io.BytesIO(data)):
             tag = _tag(el)
             if tag == "type" and not sport and el.text:          # GPX: <trk><type>running</type>
                 sport = el.text.strip().lower()
@@ -136,6 +142,8 @@ def read_track(path):
                     pts.append((v["LatitudeDegrees"], v["LongitudeDegrees"]))
                     times.append(_time(t))
                 el.clear()
+    except ET.ParseError:                                         # malformed XML: skip it like a bad FIT
+        return None
     if len(pts) < 10:
         return None
     t0 = times[0]
