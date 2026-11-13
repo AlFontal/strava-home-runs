@@ -1,4 +1,3 @@
-
 # strava-home-runs
 
 [![tests](https://github.com/AlFontal/strava-home-runs/actions/workflows/tests.yml/badge.svg)](https://github.com/AlFontal/strava-home-runs/actions/workflows/tests.yml)
@@ -9,13 +8,13 @@ Turns GPX, TCX or FIT files (from Strava, Garmin or any other GPS source) into a
 
 <p align="center"><img src="docs/preview.gif" alt="Animation of 289 runs leaving the same point in Barcelona, each at its own pace, with a clock and a histogram of finish times" width="320"></p>
 
-All runs leave the origin at the same moment and each one moves at its real pace, so the fast runs pull ahead and the long runs keep going after. Routes that you run often glow brighter, because overlapping runs add up like a heat map. A clock, a "still running" counter and a histogram of finish times fill in as runners get home. The runner marker can be a cut-out of your face or any image of your choice.
+All runs leave at the same moment and each one moves at its real pace. Routes you run often glow brighter, like a heat map. A clock, a "still running" counter and a histogram of finish times fill in as runners get home. The runner marker can be a cut-out of your face.
 
-The map is built from free data: OpenStreetMap streets and AWS Terrain Tiles elevation. It runs in Blender, with no API keys.
+The map uses OpenStreetMap streets and AWS Terrain Tiles elevation and is rendered in Blender. No API keys are needed.
 
 ## Requirements
 
-- [pixi](https://pixi.sh). It installs Python, the Python packages and ffmpeg into a local environment.
+- [pixi](https://pixi.sh), which installs Python, the Python packages and ffmpeg into a local environment.
 - [Blender](https://www.blender.org/download/) 5.0 or newer (tested with 5.2), installed separately.
 
 <details>
@@ -48,18 +47,14 @@ winget install BlenderFoundation.Blender
 
 </details>
 
-Check that Blender is 5.0 or newer with `blender --version`.
-
-The tool looks for Blender on your `PATH` and in `/Applications/Blender.app`. Use `--blender /path/to/blender` to point it somewhere else.
-
-[uv](https://docs.astral.sh/uv/) also works (`uv run homeruns ...`), but then ffmpeg has to be on your `PATH`.
+The tool looks for Blender on your `PATH` and in `/Applications/Blender.app`; `--blender /path/to/blender` points it elsewhere. [uv](https://docs.astral.sh/uv/) also works (`uv run homeruns ...`) if ffmpeg is on your `PATH`.
 
 ## Getting your files
 
-- **Strava:** Settings → My Account → Download or Delete Your Account → Request your archive. The `activities/` folder in the zip has `.gpx` files, and `.fit.gz` files for activities uploaded from a watch.
-- **Garmin Connect:** request the bulk export under Account → Data Management → Export Your Data. The activity FIT files are inside further zip files in the export; unzip those too. You can also export a single activity from its ⚙ menu.
+- **Strava:** Settings → My Account → Download or Delete Your Account → Request your archive. Use the `activities/` folder from the zip.
+- **Garmin Connect:** Account → Data Management → Export Your Data. The FIT files are in zip files inside the export; unzip those too.
 
-The tool reads `.gpx`, `.tcx` and `.fit` files, also gzipped, and searches folders recursively. Point it at the whole export folder.
+The tool reads `.gpx`, `.tcx` and `.fit` files, gzipped or not, and searches folders recursively.
 
 ## Usage
 
@@ -69,50 +64,14 @@ Run it from this folder. The first `pixi run` sets up the environment.
 pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lisbon --preview
 ```
 
+`--preview` renders a half-size version in a few minutes. When it looks right, run the same command without `--preview` for the full 1440×2560 video. On an Apple Silicon Mac that takes about 1.5 hours (5 s per frame).
+
+`--face` takes a PNG or WebP of a face on a transparent background. On macOS and iOS, "Copy Subject" in Photos makes one. The face is tinted orange; `--tint 0` keeps its colours. Without `--face`, each runner is an orange dot.
+
 `pixi run homeruns --help` lists all options.
 
-`--preview` renders at half size and every second frame, which takes a few minutes. Check the result, then run the same command without `--preview` for the full 1440×2560 video.
-
-Rendering takes about 5 s per frame on an Apple Silicon Mac, so the default video (30 s of running plus the intro and outro, about 1,100 frames) takes around 1.5 hours.
-
-The tool:
-
-1. Reads every track and keeps the runs (`--sport`, default `run`; files without a type are kept).
-2. Finds home: the place where most runs start (or `--home lat,lon`). Keeps the runs that start within `--radius` metres (default 200).
-3. Cleans the GPS:
-   - Drops spikes faster than `--max-speed` (7 m/s).
-   - Cuts a track where the signal is lost for good, for example in the metro.
-   - Shortens long pauses.
-4. Downloads elevation and streets for the area. These are cached in `--work` (default `.homeruns/`).
-5. Builds and renders the scene in Blender, adds the overlay and encodes `home_runs.mp4` plus `home_runs_final.png`.
-
-### Changing the text without rendering again
-
-The title, subtitle, clock, histogram and credit are drawn on the frames after Blender has rendered them. Add `--keep-frames` to the render, and you can redo that step later in a few minutes:
-
-```bash
-pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lisbon --keep-frames
-pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
-```
-
-`--overlay-only` takes no track files and doesn't need Blender. It reads the frames, timing and run list from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Anything in the 3D scene, such as the map, routes, camera, marker or `--seconds`, needs a full render. The kept frames take a few GB at full size.
-
-### Run count and distance in the text
-
-The title and subtitle can include numbers from the runs in the video: `{runs}`, `{km}` (total distance), `{first_year}` and `{last_year}`. Add a format after a colon, as in Python:
-
-```bash
-pixi run homeruns ~/Downloads/strava_export/activities --title "All my runs from home since {first_year}" \
-    --subtitle "{runs} runs, {km:.0f} km, Lisbon"
-```
-
-The distance is measured on the cleaned tracks after `--privacy-radius`, so it can be a little lower than Strava's total. Frames kept before `{km}` was added don't store distances, so `--overlay-only` can't fill it for them.
-
-### Face marker
-
-Pass a PNG or WebP of a face on a **transparent background** with `--face`. On macOS and iOS, "Copy Subject" or "Lift subject from background" in Photos makes one. The face is tinted orange by default; use `--tint 0` to keep its colours. Without `--face`, each runner is an orange dot.
-
-### Options
+<details>
+<summary><b>Options</b></summary>
 
 | Option | Default | |
 |---|---|---|
@@ -132,13 +91,51 @@ Pass a PNG or WebP of a face on a **transparent background** with `--face`. On m
 | `--keep-frames` | | Keep the rendered PNGs in the work folder |
 | `--overlay-only` | | Redraw the text on kept frames and encode, without Blender |
 
+</details>
+
+<details>
+<summary><b>Pipeline details</b></summary>
+
+1. Reads every track and keeps the runs (`--sport`). Files without a type are kept.
+2. Finds home, the place where most runs start (or `--home lat,lon`), and keeps the runs that start within `--radius` metres.
+3. Cleans the GPS: drops spikes faster than `--max-speed` (7 m/s), cuts a track where the signal is lost for good (in the metro, for example) and shortens long pauses.
+4. Downloads elevation and streets for the area and caches them in `--work` (default `.homeruns/`).
+5. Renders the scene in Blender, adds the text overlay and writes `home_runs.mp4` and `home_runs_final.png`.
+
+</details>
+
+<details>
+<summary><b>Title and overlay details</b></summary>
+
+The title and subtitle can use `{runs}`, `{km}` (total distance), `{first_year}` and `{last_year}`, with Python format specs after a colon:
+
+```bash
+pixi run homeruns ~/Downloads/strava_export/activities --title "All my runs from home since {first_year}" \
+    --subtitle "{runs} runs, {km:.0f} km, Lisbon"
+```
+
+The distance is measured on the cleaned tracks after `--privacy-radius`, so it can be a little lower than Strava's total.
+
+
+<b>Changing the text without rendering again</b>
+
+The text, clock and histogram are drawn after Blender renders the frames. Render with `--keep-frames` (a few GB at full size), and `--overlay-only` can redo the text in a few minutes without Blender:
+
+```bash
+pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lisbon --keep-frames
+pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
+```
+
+`--overlay-only` takes no track files. It reads everything from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Changes to the 3D scene, such as the map, routes, camera, marker or `--seconds`, need a full render. Frames kept before `{km}` was added don't store distances, so `{km}` can't be filled for them.
+
+</details>
+
 ## Privacy
 
-The video opens on your location of choice and every run leaves from it, which might show where you live.
+The video starts at your chosen location and every run leaves from it, which can show where you live. `--privacy-radius 300` cuts the first and last 300 m of every track, like Strava's privacy zones, so runners appear at the edge of the circle. With many runs the centre can still be estimated, so don't publish the video if your address must stay private.
 
-`--privacy-radius 300` cuts the first and last 300 m of every track. It also drops the shared start point, so each runner appears at the edge of the circle. Strava's privacy zones work the same way. With many runs though, the centre of the circle can still be estimated, so leave out the video if your address must stay private.
-
-## How it works
+<details>
+<summary><b>How it works</b></summary>
 
 - **Timing:** the clock starts slowly and speeds up exponentially, so the busy first minutes are readable and the long runs don't drag.
 - **Camera:** at every frame, it finds the closest position at which everything drawn so far fits between the title and the clock.
@@ -159,7 +156,9 @@ The code is in `homeruns/`:
 | `face.py` | Face and dot marker sprites |
 | `__main__.py` | Command line and pipeline |
 
-Tests for track reading, cleaning and the clock curve are in `tests/` and run with `pixi run test` (or `uv run pytest`). They don't need Blender.
+Tests for track reading, cleaning and the clock curve are in `tests/` and run with `pixi run test` (or `uv run pytest`). They don't include Blender.
+
+</details>
 
 ## Credits
 
