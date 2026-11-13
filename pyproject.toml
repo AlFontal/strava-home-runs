@@ -10,6 +10,12 @@ dependencies = ["numpy", "pillow"]
 [project.scripts]
 homeruns = "homeruns.__main__:main"
 
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -30,3 +36,13 @@ ffmpeg = "*"
 
 [tool.pixi.pypi-dependencies]
 strava-home-runs = { path = ".", editable = true }
+
+# `pixi run test` uses a separate environment so pytest stays out of the default one
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
+
+[tool.pixi.feature.test.tasks]
+test = "pytest"
+
+[tool.pixi.environments]
+test = ["test"]
