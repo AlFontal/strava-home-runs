@@ -1,6 +1,10 @@
 
 # strava-home-runs
 
+[![tests](https://github.com/AlFontal/strava-home-runs/actions/workflows/tests.yml/badge.svg)](https://github.com/AlFontal/strava-home-runs/actions/workflows/tests.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Turns GPX, TCX or FIT files (from Strava, Garmin or any other GPS source) into a 3D video of every run that started within a chosen radius of one point. It generalizes the script I used to animate five years of runs that started from my home.
 
 <p align="center"><img src="docs/preview.gif" alt="Animation of 289 runs leaving the same point in Barcelona, each at its own pace, with a clock and a histogram of finish times" width="320"></p>
@@ -154,6 +158,8 @@ The code is in `homeruns/`:
 | `timewarp.py` | Clock curve |
 | `face.py` | Face and dot marker sprites |
 | `__main__.py` | Command line and pipeline |
+
+Tests for track reading, cleaning and the clock curve are in `tests/` and run with `pixi run test` (or `uv run pytest`). They don't need Blender.
 
 ## Credits
 
