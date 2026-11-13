@@ -3,7 +3,14 @@ name: tests
 on:
   push:
     branches: [main]
+    paths: &code
+      - "homeruns/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/tests.yml"
   pull_request:
+    paths: *code
 
 jobs:
   pytest:
