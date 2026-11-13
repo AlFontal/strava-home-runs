@@ -6,7 +6,7 @@
 
 Turns GPX, TCX or FIT files (from Strava, Garmin or any other GPS source) into a 3D video of every run that started within a chosen radius of one point. It generalizes the script I used to animate five years of runs that started from my home.
 
-<p align="center"><img src="docs/preview.gif" alt="Animation of 289 runs leaving the same point in Barcelona, each at its own pace, with a clock and a histogram of finish times" width="320"></p>
+<p align="center"><img src="docs/preview.webp" alt="Animation of 289 runs leaving the same point in Barcelona, each at its own pace, with a clock and a histogram of finish times" width="320"></p>
 
 All runs leave at the same moment and each one moves at its real pace. Routes you run often glow brighter, like a heat map. A clock, a "still running" counter and a histogram of finish times fill in as runners get home. The runner marker can be a cut-out of your face.
 
