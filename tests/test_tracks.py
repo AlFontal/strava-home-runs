@@ -111,6 +111,54 @@ def test_clean_caps_pauses():
     assert out.t[-1] == 29 + 2          # the 121 s gap becomes 3x the 1 s median
 
 
+def irregular():
+    # a fix every 1-3 s, and now and then none for 5-15 s (a phone saving battery, tall buildings)
+    rng = np.random.default_rng(0)
+    dt = rng.integers(1, 4, 250)
+    dt[rng.choice(250, 20, replace=False)] = rng.integers(5, 16, 20)
+    return dt
+
+
+# seconds between samples, as different devices and apps record them
+SAMPLING = {
+    "fixed-1s": np.ones(600),
+    "fixed-5s": np.full(120, 5),
+    "irregular": irregular(),
+    "mixed-1s-8s": np.tile(np.r_[np.ones(40), np.full(10, 8)], 4),     # e.g. Garmin's smart recording
+}
+
+
+@pytest.fixture(params=list(SAMPLING))
+def sample_times(request):
+    """Sample times (s) of a run without stops, recorded with each sampling pattern."""
+    return np.r_[0, np.cumsum(SAMPLING[request.param])].astype(float)
+
+
+def test_clean_keeps_the_timing_of_a_run_without_stops(sample_times):
+    t = sample_times
+    out = tracks.clean(track(LAT + t * STEP, t))
+    np.testing.assert_array_equal(out.t, t)         # every gap was covered at 3 m/s, none is a pause
+
+
+def test_clean_caps_a_stop_at_3x_the_median_interval(sample_times):
+    t, k = sample_times, len(sample_times) // 2
+    i = np.r_[0:k + 1, k:len(t)]                    # at sample k's position twice: standing at a light ...
+    ts = np.r_[t[:k + 1], t[k:] + 120]              # ... for two minutes, nothing recorded in between
+    out = tracks.clean(track(LAT + t[i] * STEP, ts))
+    gaps = np.diff(ts)
+    gaps[k] = 3 * np.median(gaps)                   # only the stop is shortened
+    np.testing.assert_array_equal(np.diff(out.t), gaps)
+
+
+def test_clean_shortens_a_slow_gap_to_the_time_at_pause_speed():
+    t = np.arange(60.0)
+    t[30:] += 119                                   # two minutes between samples 29 and 30 ...
+    m = 3 * np.arange(60.0)
+    m[30:] += 57                                    # ... in which the runner walked 60 m
+    out = tracks.clean(track(LAT + m * STEP / 3, t))
+    assert np.diff(out.t)[29] == pytest.approx(60)  # 60 m at the 1 m/s pause_speed, not 3x the 1 s median
+
+
 # ---- home ----
 
 def test_find_home_ignores_outlying_starts():

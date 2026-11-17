@@ -162,13 +162,16 @@ def find_files(inputs):
     return sorted(set(out))
 
 
-def clean(tr, max_speed=7.0, max_rejects=10):
+def clean(tr, max_speed=7.0, max_rejects=10, pause_speed=1.0):
     """Drop GPS spikes and cap pauses.
 
     A point is a spike if reaching it from the last good point needs more than `max_speed` m/s.
     If `max_rejects` points in a row are spikes, the signal is gone (a tunnel, the metro) and the
     track is cut at the last good point instead of drawing a jump across the map.
-    Pauses are capped at 3x the median sampling interval so stops at traffic lights don't freeze runners.
+    Gaps covered slower than `pause_speed` m/s (slower than walking, faster than GPS drift while standing)
+    are pauses: they are capped at 3x the median sampling interval, but never below the time to cover them
+    at `pause_speed`, so stops at traffic lights don't freeze runners and tracks with uneven sampling keep
+    their moving time.
     """
     ky, kx = metres_per_degree(tr.loc[0, 0])
     keep, rejects = [0], 0
@@ -187,7 +190,9 @@ def clean(tr, max_speed=7.0, max_rejects=10):
         keep.append(i)
     loc, t = tr.loc[keep], tr.t[keep]
     dt = np.diff(t)
-    t = np.concatenate([[0], np.cumsum(np.minimum(dt, 3 * np.median(dt)))])
+    d = np.hypot(np.diff(loc[:, 0]) * ky, np.diff(loc[:, 1]) * kx)
+    cap = np.maximum(3 * np.median(dt), d / pause_speed)   # never less than covering d at pause_speed
+    t = np.concatenate([[0], np.cumsum(np.minimum(dt, cap))])
     return Track(tr.name, tr.start, tr.sport, loc, t)
 
 
