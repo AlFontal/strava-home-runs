@@ -1,7 +1,7 @@
 """Download terrain (AWS Terrarium elevation tiles) and OpenStreetMap streets and water for a bounding box.
 
 Writes into <out_dir>/: dem.npy (metres, north-up), streets.json (raw Overpass response), bbox.json.
-Skips the download when <out_dir> already holds the same bbox.
+Skips the download when <out_dir> already holds the same bbox, fetched with the current query (OSM_VERSION).
 """
 import io
 import json
@@ -16,6 +16,7 @@ from PIL import Image
 ZOOM = 14
 UA = {"User-Agent": "strava-home-runs/0.1"}
 OVERPASS = "https://overpass-api.de/api/interpreter"
+OSM_VERSION = 2   # bump when the query changes, so cached basemaps are fetched again
 HIGHWAYS = ("motorway|trunk|primary|secondary|tertiary|motorway_link|trunk_link|primary_link|secondary_link|"
             "tertiary_link|residential|unclassified|living_street|pedestrian|track|path|footway|steps|cycleway")
 
@@ -38,8 +39,10 @@ def fetch(out_dir, S, N, W, E, log=print):
     if os.path.exists(bb_path):
         have = json.load(open(bb_path))
         if all(abs(have[k] - want[k]) < 1e-5 for k in want) and os.path.exists(os.path.join(out_dir, "streets.json")):
-            log("basemap: cached")
-            return
+            if have.get("osm") == OSM_VERSION:
+                log("basemap: cached")
+                return
+            log("basemap: cached map is from an older version, downloading again")
 
     x0f, y0f = _tile_xy(N, W, ZOOM)
     x1f, y1f = _tile_xy(S, E, ZOOM)
@@ -74,5 +77,5 @@ def fetch(out_dir, S, N, W, E, log=print):
 out geom;"""
     raw = _fetch(OVERPASS, urllib.parse.urlencode({"data": q}).encode())
     open(os.path.join(out_dir, "streets.json"), "wb").write(raw)
-    json.dump({**want, "shape": list(dem.shape)}, open(bb_path, "w"))
+    json.dump({**want, "shape": list(dem.shape), "osm": OSM_VERSION}, open(bb_path, "w"))
     log(f"basemap: {len(json.loads(raw)['elements'])} map features")
