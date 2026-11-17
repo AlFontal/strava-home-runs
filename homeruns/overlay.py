@@ -1,4 +1,5 @@
-"""Overlay the title, clock and finish-time histogram on the rendered frames and encode an MP4.
+"""Overlay the title, clock and finish-time histogram on the rendered frames and encode an MP4, and
+crop still renders to the map.
 
 Layout is designed for 9:16 and scales with the frame width. Frame numbers come from the file names,
 so preview renders (every 2nd frame) keep real timing at half the frame rate.
@@ -28,10 +29,12 @@ FONTS = {
 }
 
 WHITE, GREY, HOT, DIM, AXIS = (232, 232, 238), (138, 143, 163), (255, 110, 30), (70, 40, 34), (90, 94, 110)
-# positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera.
+# positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera (MAP_BAND).
 # sub_gap: from the title baseline to the top of the subtitle line
 LAYOUT = dict(title_size=120, title_y=232, sub_size=34, sub_gap=40, clock_size=100, clock_y=1392,
               status_y=1502, credit_y=1640, credit_size=20, margin=72, hist=dict(x0=72, x1=600, top=1392, base=1512, label_size=22))
+MAP_BAND = (461, 1363)   # from Y_LO, Y_HI in scene.py
+CREDIT = "Map data \u00a9 OpenStreetMap contributors"
 
 
 def load_font(kind, size, override=None):
@@ -92,7 +95,6 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, lo
     full = np.bincount(bins, minlength=nb)
     f_lab = load_font("text", px(HB["label_size"]), fonts.get("text"))
     f_credit = load_font("text", px(L["credit_size"]), fonts.get("text"))
-    CREDIT = "Map data \u00a9 OpenStreetMap contributors"
     hx0, hx1, htop, hbase = px(HB["x0"]), px(HB["x1"]), px(HB["top"]), px(HB["base"])
     bw = (hx1 - hx0) / nb
     span = nb * bin_min
@@ -142,3 +144,21 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, lo
         raise SystemExit("ffmpeg failed")
     im.save(os.path.splitext(out)[0] + "_final.png")
     log(f"wrote {out} ({len(frames)} frames)")
+
+
+def still(src, out, fonts=None):
+    """Crop a still render to the map (the band the camera keeps clear between the title and the clock,
+    plus a little air) and add the map credit, dark on light maps and light on dark ones."""
+    fonts = fonts or {}
+    im = Image.open(src).convert("RGB")
+    W, H = im.size
+    k = min(W / 1080, H / 1920)   # so the credit stays below the map band on frames wider than 9:16
+    air = 60 * H / 1920
+    im = im.crop((0, round(MAP_BAND[0] * H / 1920 - air), W, round(MAP_BAND[1] * H / 1920 + air)))
+    M = round(LAYOUT["margin"] * k)
+    corner = np.asarray(im.crop((im.width - 6 * M, im.height - M, im.width, im.height)), np.float32).mean()
+    d = ImageDraw.Draw(im)
+    f = load_font("text", round(LAYOUT["credit_size"] * k), fonts.get("text"))
+    d.text((im.width - M, im.height - M // 2), CREDIT, font=f, fill=(120, 120, 120) if corner > 128 else AXIS,
+           anchor="rs")
+    im.save(out)
