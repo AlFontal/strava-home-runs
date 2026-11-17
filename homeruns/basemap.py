@@ -1,4 +1,4 @@
-"""Download terrain (AWS Terrarium elevation tiles) and OpenStreetMap streets for a bounding box.
+"""Download terrain (AWS Terrarium elevation tiles) and OpenStreetMap streets and water for a bounding box.
 
 Writes into <out_dir>/: dem.npy (metres, north-up), streets.json (raw Overpass response), bbox.json.
 Skips the download when <out_dir> already holds the same bbox.
@@ -58,12 +58,18 @@ def fetch(out_dir, S, N, W, E, log=print):
     dem = mosaic[py0:py1, px0:px1]   # Mercator rows vs latitude: < 0.1% error over ~20 km
     np.save(os.path.join(out_dir, "dem.npy"), dem)
 
-    log("basemap: OpenStreetMap streets (Overpass, can take a minute)")
+    log("basemap: OpenStreetMap streets and water (Overpass, can take a minute)")
     q = f"""[out:json][timeout:170];
 (
   way["highway"~"^({HIGHWAYS})$"]({S},{W},{N},{E});
   way["railway"="rail"]({S},{W},{N},{E});
   way["leisure"="park"]({S},{W},{N},{E});
+  way["natural"="water"]({S},{W},{N},{E});
+  relation["natural"="water"]({S},{W},{N},{E});
+  way["waterway"="riverbank"]({S},{W},{N},{E});
+  relation["waterway"="riverbank"]({S},{W},{N},{E});
+  way["landuse"~"^(reservoir|basin)$"]({S},{W},{N},{E});
+  relation["landuse"~"^(reservoir|basin)$"]({S},{W},{N},{E});
 );
 out geom;"""
     raw = _fetch(OVERPASS, urllib.parse.urlencode({"data": q}).encode())
