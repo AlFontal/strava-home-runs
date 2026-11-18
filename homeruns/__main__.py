@@ -1,6 +1,6 @@
 """strava-home-runs: animate every run that started from home, each at its own pace, in 3D.
 
-  homeruns <gpx/tcx/fit files or folders> [--face me.png] [--preview] [--keep-frames]
+  homeruns <gpx/tcx/fit files or folders> [--face me.png] [--style paper] [--preview] [--keep-frames]
   homeruns <files or folders> --stills [--no-video]   still images of the finished heat map
   homeruns --overlay-only [--title ...] [--preview]   redo the text on kept frames, no Blender
 
@@ -19,12 +19,10 @@ from datetime import date
 
 import numpy as np
 
-from . import basemap, face, overlay, prepare, timewarp, tracks
+from . import basemap, face, overlay, prepare, styles, timewarp, tracks
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FPS, INTRO, OUTRO, RAMP, TIME_K = 30, 45, 120, 60, 2.3
-# must match STYLES in stills.py, which imports bpy, so the CLI can't import it (a test checks)
-STILL_STYLES = ("dark", "blueprint", "paper", "mono")
 
 
 def parse_args(argv):
@@ -38,6 +36,7 @@ def parse_args(argv):
                    'Title and subtitle can use {runs}, {km}, {first_year} and {last_year}, '
                    'e.g. "{runs} runs, {km:.0f} km, Lisbon"')
     p.add_argument("--place", help='appended to the default subtitle, e.g. "Lisbon"')
+    p.add_argument("--credit", help='extra line under the map credit, e.g. "Running & editing: Your Name"')
     p.add_argument("--radius", type=float, default=200, help="runs must start within this many metres of home")
     p.add_argument("--home", help='"lat,lon" of home (default: the place where most runs start)')
     p.add_argument("--sport", default="run", help='keep tracks whose type contains this ("any" keeps all)')
@@ -47,6 +46,11 @@ def parse_args(argv):
                    help="cut the first and last N metres around home from every track (hides the exact start)")
     p.add_argument("--seconds", type=float, default=30, help="video seconds for the longest run to finish")
     p.add_argument("--size", default="1440x2560", help="output size WxH (the layout is made for 9:16)")
+    p.add_argument("--layout", choices=["vertical", "feed", "shorts"], default="vertical",
+                   help="vertical: 9:16; feed: 4:5 crop for LinkedIn or Instagram feeds; "
+                   "shorts: 9:16 with text clear of the YouTube Shorts, Reels and TikTok buttons")
+    p.add_argument("--style", choices=styles.NAMES,
+                   help="map style of the video: dark (default), blueprint, or the light paper and mono")
     p.add_argument("--preview", action="store_true", help="quick low-res check: half size, every 2nd frame")
     p.add_argument("--out", default="home_runs.mp4", help="output video")
     p.add_argument("--work", default=".homeruns", help="working folder (map cache, scene, frames)")
@@ -57,7 +61,7 @@ def parse_args(argv):
     p.add_argument("--crf", type=int, default=16, help="x264 quality, lower is better and bigger")
     p.add_argument("--stills", nargs="?", const="all", metavar="STYLES",
                    help="also render the finished heat map as still images, one per map style: comma-separated "
-                        f"from {', '.join(STILL_STYLES)} (no value: all)")
+                        f"from {', '.join(styles.NAMES)} (no value: all)")
     p.add_argument("--no-video", action="store_true", help="skip the video, e.g. to only make --stills")
     p.add_argument("--keep-frames", action="store_true", help="keep the rendered PNG frames")
     p.add_argument("--overlay-only", action="store_true",
@@ -67,12 +71,12 @@ def parse_args(argv):
     a = p.parse_args(argv)
     if a.stills is not None:   # checked first: "--stills runs/" takes the folder as the value
         named = dict.fromkeys(v.strip() for v in a.stills.split(",") if v.strip())   # in order, once each
-        a.stills = list(STILL_STYLES) if a.stills == "all" else list(named)
+        a.stills = list(styles.NAMES) if a.stills == "all" else list(named)
         if not a.stills:
-            p.error(f"--stills got no style; choose from {', '.join(STILL_STYLES)}, or give no value for all")
-        bad = [v for v in a.stills if v not in STILL_STYLES]
+            p.error(f"--stills got no style; choose from {', '.join(styles.NAMES)}, or give no value for all")
+        bad = [v for v in a.stills if v not in styles.NAMES]
         if bad:
-            p.error(f"unknown still style {bad[0]!r}; choose from {', '.join(STILL_STYLES)} "
+            p.error(f"unknown still style {bad[0]!r}; choose from {', '.join(styles.NAMES)} "
                     "(--stills takes an optional value, so put it after the files)")
     if a.overlay_only and (a.stills or a.no_video):
         p.error("--stills and --no-video need the tracks, not --overlay-only")
@@ -131,7 +135,8 @@ def finish(a, cfg, routes, frames_dir):
     if a.preview:
         root, ext = os.path.splitext(out)
         out = f"{root}_preview{ext or '.mp4'}"
-    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts(a), a.crf)
+    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts(a), a.crf, a.credit,
+                   overlay.LAYOUTS[a.layout])
 
 
 def fonts(a):
@@ -165,6 +170,9 @@ def overlay_only(a):
         raise SystemExit(f"no kept frames in {frames_dir}. Render once with --keep-frames"
                          + (" --preview" if a.preview else "") + " (and the same --work).")
     saved = json.load(open(meta))
+    style = saved["cfg"].get("style", "dark")
+    if a.style and a.style != style:
+        raise SystemExit(f"the kept frames are in the {style} style; --style needs a full render")
     finish(a, saved["cfg"], saved["routes"], frames_dir)
 
 
@@ -231,7 +239,7 @@ def main(argv=None):
                ramp=RAMP, snap_start=a.privacy_radius <= 0, sea=not a.no_sea,
                scale=float(np.clip(max(WKM, HKM) / 12, 0.3, 3.0)),
                line_strength=a.line_strength or float(np.clip(0.012 * math.sqrt(289 / len(runs)), 0.012, 0.05)),
-               preview=a.preview, frames=frames_dir)
+               preview=a.preview, frames=frames_dir, style=a.style or "dark", face=bool(a.face))
     cfg_path = os.path.join(work, "config.json")
     json.dump(cfg, open(cfg_path, "w"), indent=1)
     print("building scene in Blender")
