@@ -1,6 +1,6 @@
 """Turn the basemap and the tracks into Blender-ready assets (plain Python, runs before Blender).
 
-<work>/streets.png  RGB texture: R = streets (width by road class), G = parks, B = sea
+<work>/streets.png  RGB texture: R = streets (width by road class), G = parks, B = water (sea, lakes, rivers)
 <work>/routes.json  per run: xyz points in km (terrain-local) every STEP seconds
 """
 import json
@@ -8,7 +8,7 @@ import math
 import os
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -22,6 +22,64 @@ ROAD_W = {"motorway": 9, "trunk": 9, "primary": 8, "secondary": 7, "tertiary": 6
           "motorway_link": 5, "trunk_link": 5, "primary_link": 5, "secondary_link": 5, "tertiary_link": 5,
           "residential": 4, "unclassified": 4, "living_street": 3, "pedestrian": 4,
           "cycleway": 2, "footway": 2, "steps": 2, "path": 2, "track": 2}
+
+
+def _extent(rings):
+    a = np.array([p for r in rings for p in r])
+    return np.ptp(a[:, 0]) * np.ptp(a[:, 1])
+
+
+def is_water(tags):
+    return tags.get("natural") == "water" or tags.get("waterway") == "riverbank" \
+        or tags.get("landuse") in ("reservoir", "basin")
+
+
+def join_rings(segments):
+    """Join way geometries ([(lat, lon), ...]) end to end into closed rings. Chains that can't be closed
+    (a member missing from the download) are dropped rather than drawn as a wrong shape."""
+    segs = [list(s) for s in segments if len(s) > 1]
+    rings = []
+    while segs:
+        ring = segs.pop()
+        while ring[0] != ring[-1]:
+            for i, s in enumerate(segs):
+                if s[0] == ring[-1]:
+                    ring = ring + s[1:]
+                elif s[-1] == ring[-1]:
+                    ring = ring + s[-2::-1]
+                elif s[-1] == ring[0]:
+                    ring = s[:-1] + ring
+                elif s[0] == ring[0]:
+                    ring = s[:0:-1] + ring
+                else:
+                    continue
+                segs.pop(i)
+                break
+            else:
+                break
+        if ring[0] == ring[-1] and len(ring) > 3:
+            rings.append(ring)
+    return rings
+
+
+def water_areas(elements):
+    """Lakes, rivers and reservoirs from an Overpass `out geom` response, as (outer rings, inner rings)
+    per feature; inner rings are islands."""
+    areas = []
+    for el in elements:
+        if not is_water(el.get("tags", {})):
+            continue
+        if el["type"] == "way" and el.get("geometry"):
+            ring = [(p["lat"], p["lon"]) for p in el["geometry"]]
+            if len(ring) > 3 and ring[0] == ring[-1]:
+                areas.append(([ring], []))
+        elif el["type"] == "relation":
+            ways = [m for m in el.get("members", []) if m.get("type") == "way" and m.get("geometry")]
+            pts = lambda m: [(p["lat"], p["lon"]) for p in m["geometry"]]  # noqa: E731
+            outer = join_rings(pts(m) for m in ways if m.get("role") != "inner")
+            if outer:
+                areas.append((outer, join_rings(pts(m) for m in ways if m.get("role") == "inner")))
+    return areas
 
 
 def prepare(basemap_dir, work_dir, tracks, sea=True, log=print):
@@ -61,8 +119,10 @@ def prepare(basemap_dir, work_dir, tracks, sea=True, log=print):
         g = el.get("geometry")
         if not g:
             continue
-        pts = [to_px(p["lat"], p["lon"]) for p in g]
         t = el.get("tags", {})
+        if is_water(t):
+            continue   # drawn as areas below; the outline would otherwise become a path
+        pts = [to_px(p["lat"], p["lon"]) for p in g]
         if t.get("leisure") == "park":
             if len(pts) > 2:
                 dp.polygon(pts, fill=255)
@@ -76,6 +136,20 @@ def prepare(basemap_dir, work_dir, tracks, sea=True, log=print):
     sea_mask = (dem <= 0.5) if sea else np.zeros_like(dem, bool)
     water = Image.fromarray((sea_mask * 255).astype(np.uint8)).resize((tex_w, tex_h), Image.BILINEAR)
     water = water.filter(ImageFilter.GaussianBlur(4 * px))
+    areas = water_areas(osm)
+    if areas:
+        # lakes and rivers, biggest first, and each feature's rings biggest first with their own fill, so an
+        # island doesn't erase a pond on it, whether the pond is mapped on its own or as another outer ring
+        lakes = Image.new("L", (tex_w, tex_h), 0)
+        dl = ImageDraw.Draw(lakes)
+        for outer, inner in sorted(areas, key=lambda a: -_extent(a[0])):
+            rings = [(r, 255) for r in outer] + [(r, 0) for r in inner]
+            for ring, fill in sorted(rings, key=lambda rf: -_extent([rf[0]])):
+                dl.polygon([to_px(*p) for p in ring], fill=fill)
+        lakes = lakes.filter(ImageFilter.GaussianBlur(1.5 * px))
+        # streets over lakes and rivers (bridges, but also tunnels) stay out of the water so they stay lit as before
+        lakes = ImageChops.subtract(lakes, streets.point(lambda v: 255 if v else 0))
+        water = ImageChops.lighter(water, lakes)
     Image.merge("RGB", (streets, parks, water)).save(os.path.join(work_dir, "streets.png"))
 
     # ---- routes ----

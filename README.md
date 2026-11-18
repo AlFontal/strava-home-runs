@@ -10,7 +10,7 @@ Turns GPX, TCX or FIT files (from Strava, Garmin or any other GPS source) into a
 
 All runs leave at the same moment and each one moves at its real pace. Routes you run often glow brighter, like a heat map. A clock, a "still running" counter and a histogram of finish times fill in as runners get home. The runner marker can be a cut-out of your face.
 
-The map uses OpenStreetMap streets and AWS Terrain Tiles elevation and is rendered in Blender. No API keys are needed.
+The map uses streets, lakes and rivers from OpenStreetMap and elevation from AWS Terrain Tiles, and is rendered in Blender. No API keys are needed.
 
 ## Requirements
 
@@ -84,7 +84,7 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 | `--seconds` | 30 | Video seconds until the longest run finishes |
 | `--size` | `1440x2560` | Output size; the layout is made for 9:16 |
 | `--privacy-radius` | 0 | Cut this many metres around home from every track |
-| `--no-sea` | | Don't treat land at sea level as sea (needed in places like the Netherlands) |
+| `--no-sea` | | Don't treat land at sea level as sea (needed in places like the Netherlands); lakes and rivers from OpenStreetMap are still drawn |
 | `--line-strength` | auto | Brightness of a single route |
 | `--crf` | 16 | Video quality; higher gives a smaller file |
 | `--font-title`, `--font-text`, `--font-clock` | system fonts | TTF/OTF files |
@@ -99,7 +99,7 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 1. Reads every track and keeps the runs (`--sport`). Files without a type are kept.
 2. Finds home, the place where most runs start (or `--home lat,lon`), and keeps the runs that start within `--radius` metres.
 3. Cleans the GPS: drops spikes faster than `--max-speed` (7 m/s), cuts a track where the signal is lost for good (in the metro, for example) and shortens long pauses.
-4. Downloads elevation and streets for the area and caches them in `--work` (default `.homeruns/`).
+4. Downloads elevation, streets, lakes and rivers for the area and caches them in `--work` (default `.homeruns/`).
 5. Renders the scene in Blender, adds the text overlay and writes `home_runs.mp4` and `home_runs_final.png`.
 
 </details>
@@ -147,7 +147,7 @@ The code is in `homeruns/`:
 | File | Role |
 |---|---|
 | `tracks.py` | Reads GPX/TCX/FIT, finds home, cleans GPS |
-| `basemap.py` | Downloads elevation and streets |
+| `basemap.py` | Downloads elevation, streets, lakes and rivers |
 | `prepare.py` | Builds the street texture and route points |
 | `scene.py` | Builds the scene in Blender |
 | `render_setup.py` | Render settings |
@@ -156,7 +156,7 @@ The code is in `homeruns/`:
 | `face.py` | Face and dot marker sprites |
 | `__main__.py` | Command line and pipeline |
 
-Tests for track reading, cleaning and the clock curve are in `tests/` and run with `pixi run test` (or `uv run pytest`). They don't include Blender.
+Tests for track reading, cleaning, the map cache, lake and river outlines and the clock curve are in `tests/` and run with `pixi run test` (or `uv run pytest`). They don't include Blender.
 
 </details>
 
