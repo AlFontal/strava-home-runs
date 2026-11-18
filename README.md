@@ -138,7 +138,15 @@ pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
 <details>
 <summary><b>Still images</b></summary>
 
-`--stills` also renders the finished heat map, without the text, as PNG images in four map styles: `dark` (the video's look), `blueprint` (blue), and `paper` and `mono` (light maps with the routes drawn like ink). Each is a single frame at twice the video size, cropped to the map, so it takes seconds. The same styles work for the video with `--style`, and the text and histogram follow the style's colours. With `--no-video` you get only the images:
+`--stills` also renders the finished heat map, without the text, as PNG images in four map styles: `dark` (the video's look), `blueprint` (blue), and `paper` and `mono` (light maps with the routes drawn like ink). Each is a single frame at twice the video size, cropped to the map, so it takes seconds. The same styles work for the video with `--style`, and the text and histogram follow the style's colours.
+
+| `dark` | `blueprint` |
+|---|---|
+| <img src="docs/still_dark.webp" alt="Heat map of 289 Barcelona runs in the dark style: orange routes glowing on a night map" width="400"> | <img src="docs/still_blueprint.webp" alt="The same heat map in the blueprint style: blue routes glowing on a dark blue map" width="400"> |
+| **`paper`** | **`mono`** |
+| <img src="docs/still_paper.webp" alt="The same heat map in the paper style: dark red routes on a cream map with blue sea and rivers" width="400"> | <img src="docs/still_mono.webp" alt="The same heat map in the mono style: black routes on a light grey map" width="400"> |
+
+With `--no-video` you get only the images:
 
 ```bash
 pixi run homeruns ~/Downloads/strava_export/activities --stills --no-video         # all four styles
