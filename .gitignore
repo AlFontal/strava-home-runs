@@ -2,6 +2,10 @@
 __pycache__/
 *.mp4
 *_final.png
+*_dark.png
+*_blueprint.png
+*_paper.png
+*_mono.png
 *.gpx
 *.tcx
 *.gz

@@ -1,6 +1,7 @@
 """strava-home-runs: animate every run that started from home, each at its own pace, in 3D.
 
   homeruns <gpx/tcx/fit files or folders> [--face me.png] [--preview] [--keep-frames]
+  homeruns <files or folders> --stills [--no-video]   still images of the finished heat map
   homeruns --overlay-only [--title ...] [--preview]   redo the text on kept frames, no Blender
 
 
@@ -22,6 +23,8 @@ from . import basemap, face, overlay, prepare, timewarp, tracks
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FPS, INTRO, OUTRO, RAMP, TIME_K = 30, 45, 120, 60, 2.3
+# must match STYLES in stills.py, which imports bpy, so the CLI can't import it (a test checks)
+STILL_STYLES = ("dark", "blueprint", "paper", "mono")
 
 
 def parse_args(argv):
@@ -52,14 +55,31 @@ def parse_args(argv):
     p.add_argument("--max-speed", type=float, default=7.0, help="m/s; faster GPS jumps are treated as errors")
     p.add_argument("--line-strength", type=float, help="brightness of a single route (default: from the run count)")
     p.add_argument("--crf", type=int, default=16, help="x264 quality, lower is better and bigger")
+    p.add_argument("--stills", nargs="?", const="all", metavar="STYLES",
+                   help="also render the finished heat map as still images, one per map style: comma-separated "
+                        f"from {', '.join(STILL_STYLES)} (no value: all)")
+    p.add_argument("--no-video", action="store_true", help="skip the video, e.g. to only make --stills")
     p.add_argument("--keep-frames", action="store_true", help="keep the rendered PNG frames")
     p.add_argument("--overlay-only", action="store_true",
                    help="skip Blender: redraw the overlay on frames kept by an earlier --keep-frames run and encode")
     for k in ("title", "text", "clock"):
         p.add_argument(f"--font-{k}", help=f"TTF/OTF font for the {k}")
     a = p.parse_args(argv)
+    if a.stills is not None:   # checked first: "--stills runs/" takes the folder as the value
+        named = dict.fromkeys(v.strip() for v in a.stills.split(",") if v.strip())   # in order, once each
+        a.stills = list(STILL_STYLES) if a.stills == "all" else list(named)
+        if not a.stills:
+            p.error(f"--stills got no style; choose from {', '.join(STILL_STYLES)}, or give no value for all")
+        bad = [v for v in a.stills if v not in STILL_STYLES]
+        if bad:
+            p.error(f"unknown still style {bad[0]!r}; choose from {', '.join(STILL_STYLES)} "
+                    "(--stills takes an optional value, so put it after the files)")
+    if a.overlay_only and (a.stills or a.no_video):
+        p.error("--stills and --no-video need the tracks, not --overlay-only")
     if not a.inputs and not a.overlay_only:
         p.error("give GPX/TCX/FIT files or folders (or --overlay-only)")
+    if a.no_video and not a.stills:
+        p.error("--no-video leaves nothing to make; add --stills")
     return a
 
 
@@ -111,8 +131,30 @@ def finish(a, cfg, routes, frames_dir):
     if a.preview:
         root, ext = os.path.splitext(out)
         out = f"{root}_preview{ext or '.mp4'}"
-    fonts = {"title": a.font_title, "text": a.font_text, "clock": a.font_clock}
-    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts, a.crf)
+    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts(a), a.crf)
+
+
+def fonts(a):
+    return {"title": a.font_title, "text": a.font_text, "clock": a.font_clock}
+
+
+def render_stills(a, blender, work, root):
+    """Render the last frame in each requested map style, crop it to the map and add the credit."""
+    raw = os.path.join(work, "stills")
+    shutil.rmtree(raw, ignore_errors=True)
+    os.makedirs(raw)
+    print(f"rendering stills: {', '.join(a.stills)}")
+    r = subprocess.run([blender, "-b", os.path.join(work, "scene.blend"), "--python-exit-code", "1",
+                        "-P", os.path.join(HERE, "stills.py"), "--", raw, "100" if a.preview else "200", *a.stills],
+                       capture_output=True, text=True)
+    if r.returncode or not all(os.path.exists(os.path.join(raw, f"{v}.png")) for v in a.stills):
+        sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
+        raise SystemExit("still render failed")
+    for v in a.stills:
+        out = f"{root}_{v}.png"
+        overlay.still(os.path.join(raw, f"{v}.png"), out, fonts(a))
+        print(f"wrote {out}")
+    shutil.rmtree(raw, ignore_errors=True)
 
 
 def overlay_only(a):
@@ -128,7 +170,7 @@ def overlay_only(a):
 
 def main(argv=None):
     a = parse_args(argv)
-    if not shutil.which("ffmpeg"):
+    if not a.no_video and not shutil.which("ffmpeg"):
         raise SystemExit("ffmpeg not found on PATH.")
     if a.overlay_only:
         return overlay_only(a)
@@ -198,6 +240,10 @@ def main(argv=None):
     if r.returncode or not os.path.exists(os.path.join(work, "scene.blend")):
         sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
         raise SystemExit("Blender scene build failed")
+    if a.stills:
+        render_stills(a, blender, work, os.path.splitext(a.out)[0] + ("_preview" if a.preview else ""))
+    if a.no_video:
+        return
 
     # ---- render ----
     shutil.rmtree(frames_dir, ignore_errors=True)

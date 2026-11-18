@@ -88,6 +88,8 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 | `--line-strength` | auto | Brightness of a single route |
 | `--crf` | 16 | Video quality; higher gives a smaller file |
 | `--font-title`, `--font-text`, `--font-clock` | system fonts | TTF/OTF files |
+| `--stills` | | Also render still images of the finished heat map in `dark`, `blueprint`, `paper` and/or `mono` (no value: all) |
+| `--no-video` | | Skip the video, e.g. to only make `--stills` |
 | `--keep-frames` | | Keep the rendered PNGs in the work folder |
 | `--overlay-only` | | Redraw the text on kept frames and encode, without Blender |
 
@@ -130,9 +132,23 @@ pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
 
 </details>
 
+<details>
+<summary><b>Still images</b></summary>
+
+`--stills` also renders the finished heat map, without the text, as PNG images in four map styles: `dark` (the video's look), `blueprint` (blue), and `paper` and `mono` (light maps with the routes drawn like ink). Each is a single frame at twice the video size, cropped to the map, so it takes seconds. With `--no-video` you get only the images:
+
+```bash
+pixi run homeruns ~/Downloads/strava_export/activities --stills --no-video         # all four styles
+pixi run homeruns ~/Downloads/strava_export/activities --stills paper,mono --no-video
+```
+
+They are named after `--out`: `home_runs_<style>.png` by default, or `home_runs_preview_<style>.png` (at video size) with `--preview`. `--stills` takes an optional value, so put it after the files (or write `--stills=paper`).
+
+</details>
+
 ## Privacy
 
-The video starts at your chosen location and every run leaves from it, which can show where you live. `--privacy-radius 300` cuts the first and last 300 m of every track, like Strava's privacy zones, so runners appear at the edge of the circle. With many runs the centre can still be estimated, so don't publish the video if your address must stay private.
+The video starts at your chosen location and every run leaves from it, and the still images show the same routes, so both can show where you live. `--privacy-radius 300` cuts the first and last 300 m of every track, like Strava's privacy zones, so runners appear at the edge of the circle. With many runs the centre can still be estimated, so don't publish the video or the images if your address must stay private.
 
 <details>
 <summary><b>How it works</b></summary>
@@ -151,7 +167,8 @@ The code is in `homeruns/`:
 | `prepare.py` | Builds the street texture and route points |
 | `scene.py` | Builds the scene in Blender |
 | `render_setup.py` | Render settings |
-| `overlay.py` | Text, histogram and encoding |
+| `stills.py` | Restyles and renders the last frame for still images |
+| `overlay.py` | Text, histogram and encoding; crops the still images |
 | `timewarp.py` | Clock curve |
 | `face.py` | Face and dot marker sprites |
 | `__main__.py` | Command line and pipeline |
@@ -162,7 +179,7 @@ Tests for track reading, cleaning, the map cache, lake and river outlines and th
 
 ## Credits
 
-- Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). The video carries this credit.
+- Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). The video and the still images carry this credit.
 - Elevation from [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (SRTM, GMTED, NED and other sources).
 - Strava is a trademark of Strava, Inc. and Garmin is a trademark of Garmin Ltd. This project is not affiliated with or endorsed by either.
 
