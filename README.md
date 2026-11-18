@@ -77,12 +77,14 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 |---|---|---|
 | `--title`, `--subtitle` | `HOME RUNS since <year>`, `<n> runs, <total> km` | Text at the top; can use `{runs}`, `{km}`, `{first_year}`, `{last_year}` |
 | `--place` | | Added to the default subtitle |
+| `--credit` | | Extra line under the map credit, e.g. `"Running & editing: Your Name"` |
 | `--radius` | 200 | Metres from home a run must start within |
 | `--home` | auto | `lat,lon` of home |
 | `--since`, `--until` | | Date range, `YYYY-MM-DD` |
 | `--sport` | `run` | Keep tracks whose type contains this; `any` keeps all |
 | `--seconds` | 30 | Video seconds until the longest run finishes |
 | `--size` | `1440x2560` | Output size; the layout is made for 9:16 |
+| `--layout` | `vertical` | `feed`: 4:5 crop (1440×1800) for LinkedIn or Instagram feeds. `shorts`: 9:16 with the text clear of the YouTube Shorts, Reels and TikTok buttons and caption. Works with `--overlay-only` |
 | `--privacy-radius` | 0 | Cut this many metres around home from every track |
 | `--no-sea` | | Don't treat land at sea level as sea (needed in places like the Netherlands); lakes and rivers from OpenStreetMap are still drawn |
 | `--line-strength` | auto | Brightness of a single route |
@@ -128,7 +130,7 @@ pixi run homeruns ~/Downloads/strava_export/activities --face me.png --place Lis
 pixi run homeruns --overlay-only --title "MY HOME RUNS" --place Lisbon
 ```
 
-`--overlay-only` takes no track files. It reads everything from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--out` and `--crf` options. Changes to the 3D scene, such as the map, routes, camera, marker or `--seconds`, need a full render. Frames kept before `{km}` was added don't store distances, so `{km}` can't be filled for them.
+`--overlay-only` takes no track files. It reads everything from the work folder, so pass the same `--work` (and `--preview` for preview frames). It accepts the text, font, `--credit`, `--layout`, `--out` and `--crf` options. Changes to the 3D scene, such as the map, routes, camera, marker or `--seconds`, need a full render. Frames kept before `{km}` was added don't store distances, so `{km}` can't be filled for them.
 
 </details>
 

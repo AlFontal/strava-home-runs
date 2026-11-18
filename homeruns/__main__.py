@@ -38,6 +38,7 @@ def parse_args(argv):
                    'Title and subtitle can use {runs}, {km}, {first_year} and {last_year}, '
                    'e.g. "{runs} runs, {km:.0f} km, Lisbon"')
     p.add_argument("--place", help='appended to the default subtitle, e.g. "Lisbon"')
+    p.add_argument("--credit", help='extra line under the map credit, e.g. "Running & editing: Your Name"')
     p.add_argument("--radius", type=float, default=200, help="runs must start within this many metres of home")
     p.add_argument("--home", help='"lat,lon" of home (default: the place where most runs start)')
     p.add_argument("--sport", default="run", help='keep tracks whose type contains this ("any" keeps all)')
@@ -47,6 +48,9 @@ def parse_args(argv):
                    help="cut the first and last N metres around home from every track (hides the exact start)")
     p.add_argument("--seconds", type=float, default=30, help="video seconds for the longest run to finish")
     p.add_argument("--size", default="1440x2560", help="output size WxH (the layout is made for 9:16)")
+    p.add_argument("--layout", choices=["vertical", "feed", "shorts"], default="vertical",
+                   help="vertical: 9:16; feed: 4:5 crop for LinkedIn or Instagram feeds; "
+                   "shorts: 9:16 with text clear of the YouTube Shorts, Reels and TikTok buttons")
     p.add_argument("--preview", action="store_true", help="quick low-res check: half size, every 2nd frame")
     p.add_argument("--out", default="home_runs.mp4", help="output video")
     p.add_argument("--work", default=".homeruns", help="working folder (map cache, scene, frames)")
@@ -131,7 +135,8 @@ def finish(a, cfg, routes, frames_dir):
     if a.preview:
         root, ext = os.path.splitext(out)
         out = f"{root}_preview{ext or '.mp4'}"
-    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts(a), a.crf)
+    overlay.encode(cfg, routes, frames_dir, out, title, subtitle, fonts(a), a.crf, a.credit,
+                   overlay.LAYOUTS[a.layout])
 
 
 def fonts(a):
