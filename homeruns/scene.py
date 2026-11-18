@@ -50,6 +50,7 @@ def frame_at(t):
 
 bpy.context.preferences.edit.keyframe_new_interpolation_type = "LINEAR"
 sc = bpy.context.scene
+sc["face"] = bool(cfg.get("face"))   # restyle.py tints the plain dot marker on light maps, not a face
 for o in list(bpy.data.objects):
     bpy.data.objects.remove(o, do_unlink=True)
 sc.frame_start = 1

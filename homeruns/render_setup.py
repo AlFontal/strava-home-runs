@@ -4,6 +4,7 @@
 
 16x anisotropic filtering keeps the tilted street map crisp (a preference, so not stored in the
 .blend). With "preview": half resolution, every 2nd frame, fewer samples, heat blur halved to match.
+"style" recolours the scene (see styles.py).
 """
 import json
 import os
@@ -11,9 +12,14 @@ import sys
 
 import bpy
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import restyle  # noqa: E402
+import styles  # noqa: E402
+
 cfg = json.load(open(sys.argv[sys.argv.index("--") + 1]))
 bpy.context.preferences.system.anisotropic_filter = "FILTER_16"
 sc = bpy.context.scene
+restyle.apply(sc, styles.SCENE[cfg.get("style", "dark")], restyle.heat_output(sc))
 if cfg.get("preview"):
     sc.render.resolution_percentage = 50
     sc.frame_step = 2

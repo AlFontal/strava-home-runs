@@ -13,7 +13,7 @@ import subprocess
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from . import timewarp
+from . import styles, timewarp
 
 # (path, face index) candidates; the first one that exists wins
 FONTS = {
@@ -28,8 +28,7 @@ FONTS = {
               ("C:/Windows/Fonts/arialbd.ttf", 0)],
 }
 
-WHITE, GREY, HOT, DIM, AXIS = (232, 232, 238), (160, 165, 184), (255, 110, 30), (70, 40, 34), (100, 104, 120)
-# positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera (MAP_BAND).
+# colours come from styles.TEXT; positions in px at 1080 x 1920; the map is framed between y = 461 and y = 1363 by the camera (MAP_BAND).
 # sub_gap: from the title baseline to the top of the subtitle line
 LAYOUT = dict(title_size=120, title_y=232, sub_size=40, sub_gap=40, clock_size=100, clock_y=1392,
               status_y=1502, credit_y=1650, credit_size=22, margin=72, scrim_top=476,
@@ -72,7 +71,10 @@ def _hist_scale(tmax):
 
 
 def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, credit=None, layout=None, log=print):
+    """Draw the overlay in the colours of the style the frames were rendered in (cfg["style"]) and encode."""
     fonts = fonts or {}
+    P = styles.TEXT[cfg.get("style", "dark")]
+    WHITE, GREY, HOT, DIM, AXIS = P["main"], P["sub"], P["hot"], P["dim"], P["axis"]
     FPS, INTRO, RUN_FRAMES = cfg["fps"], cfg["intro"], cfg["run_frames"]
     durs = np.array([r["duration"] for r in routes])
     tmax = float(durs.max())
@@ -102,15 +104,17 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, cr
     # the subtitle follows the title's baseline, so it stays close when a long title is shrunk
     sub_y = px(L["title_y"]) + f_title.getbbox("H")[3] + px(L["sub_gap"])
 
-    # dark gradients behind the text so routes passing underneath don't hurt legibility
+    # gradients towards the background behind the text so routes passing underneath don't hurt legibility;
+    # keep is the share of the frame left, the rest is the scrim colour
     y = np.arange(H, dtype=np.float32)[:, None]
     top_end, bot_start = px(L["scrim_top"]), px(L["clock_y"]) - px(90)   # scrim ends where it always has, below the subtitle
     top = np.clip((top_end - y) / (top_end * 0.55), 0, 1)
     bot = np.clip((y - bot_start) / px(260), 0, 1)
-    scrim = (1 - 0.72 * np.maximum(top, bot) ** 1.3)[:, :, None]
-    if crop and crop[3] > src_h:   # the crop runs past the bottom of the render: fade into the black rows
+    keep = (1 - P["scrim_k"] * np.maximum(top, bot) ** 1.3)[:, :, None]
+    if crop and crop[3] > src_h:   # the crop runs past the bottom of the render: fade into the empty rows
         edge = src_h - crop[1]
-        scrim *= np.clip((edge - y) / px(240), 0, 1)[:, :, None]
+        keep *= np.clip((edge - y) / px(240), 0, 1)[:, :, None]
+    scrim = (1 - keep) * np.array(P["scrim"], np.float32)
 
     HB = L["hist"]
     bin_min, ticks = _hist_scale(tmax)
@@ -133,7 +137,7 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, cr
             x = hx0 + i * bw
             if full[i]:   # faint ghost of the whole distribution, filled in as runs get home
                 h = (hbase - htop) * full[i] / full.max()
-                d.rectangle([x + 1, hbase - h, x + bw - 2, hbase], fill=col(DIM, a * 0.5))
+                d.rectangle([x + 1, hbase - h, x + bw - 2, hbase], fill=col(DIM, a))
             if done[i]:
                 h = (hbase - htop) * done[i] / full.max()
                 d.rectangle([x + 1, hbase - h, x + bw - 2, hbase], fill=col(HOT, a))
@@ -166,7 +170,7 @@ def encode(cfg, routes, frames_dir, out, title, subtitle, fonts=None, crf=16, cr
         im = Image.open(path).convert("RGB")
         if crop:
             im = im.crop(crop)
-        im = Image.fromarray((np.asarray(im, np.float32) * scrim).astype(np.uint8))
+        im = Image.fromarray((np.asarray(im, np.float32) * keep + scrim).astype(np.uint8))
         d = ImageDraw.Draw(im)
         a = 1.0   # text at full strength from frame 0, which feeds use as the thumbnail
         d.text((M, px(L["title_y"])), title, font=f_title, fill=col(WHITE, a))
@@ -204,6 +208,6 @@ def still(src, out, fonts=None):
     corner = np.asarray(im.crop((im.width - 6 * M, im.height - M, im.width, im.height)), np.float32).mean()
     d = ImageDraw.Draw(im)
     f = load_font("text", round(LAYOUT["credit_size"] * k), fonts.get("text"))
-    d.text((im.width - M, im.height - M // 2), CREDIT, font=f, fill=(120, 120, 120) if corner > 128 else AXIS,
+    d.text((im.width - M, im.height - M // 2), CREDIT, font=f, fill=(120, 120, 120) if corner > 128 else styles.TEXT["dark"]["axis"],
            anchor="rs")
     im.save(out)

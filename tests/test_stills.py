@@ -1,17 +1,15 @@
-import ast
-import os
-
 import numpy as np
 import pytest
 from PIL import Image
 
 from homeruns import overlay
-from homeruns.__main__ import STILL_STYLES, parse_args
+from homeruns.__main__ import parse_args
+from homeruns.styles import NAMES
 
 
 def test_stills_without_a_value_means_all_styles():
-    assert parse_args(["runs", "--stills"]).stills == list(STILL_STYLES)
-    assert parse_args(["runs", "--stills", "--no-video"]).stills == list(STILL_STYLES)
+    assert parse_args(["runs", "--stills"]).stills == list(NAMES)
+    assert parse_args(["runs", "--stills", "--no-video"]).stills == list(NAMES)
     assert parse_args(["runs"]).stills is None
 
 
@@ -32,13 +30,6 @@ def test_bad_stills_options(argv, message, capsys):
     with pytest.raises(SystemExit):
         parse_args(argv)
     assert message in capsys.readouterr().err
-
-
-def test_cli_styles_match_the_blender_script():
-    src = open(os.path.join(os.path.dirname(overlay.__file__), "stills.py")).read()
-    styles = next(n.value for n in ast.parse(src).body
-                  if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "STYLES")
-    assert tuple(k.value for k in styles.keys) == STILL_STYLES
 
 
 @pytest.mark.parametrize("size", [(1440, 2560), (2880, 5120), (1080, 1080)])   # --preview, default, a square --size
